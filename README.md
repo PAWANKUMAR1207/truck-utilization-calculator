@@ -45,4 +45,13 @@ truck-utilization-calculator/
 ├── server.js                # Express backend
 ├── logic.js                 # Utilization calculation logic
 ├── README.md                # Project documentation
-├── package.json             # Project configuration
+├── package.json             # Project configuration>
+
+
+The node modules will be automatically downloaded once you instal dependencies using npm install
+File should be stored in the structure given 
+We can remove the style.css file 
+
+Try to use the strucutre given ,future enhancments will be done soon 
+
+Any errors reach out to cheerfulpawan@gmail.com
