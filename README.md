@@ -55,3 +55,6 @@ We can remove the style.css file
 Try to use the strucutre given ,future enhancments will be done soon 
 
 Any errors reach out to cheerfulpawan@gmail.com
+
+
+I have also included Screenshots in the form of .png files 
