@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Truck Utilization Calculator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-6">
+  <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Truck Utilization Calculator</h1>
+
+  <!-- Instructions -->
+  <div class="w-full max-w-3xl mb-4">
+    <button id="toggle-instructions" class="bg-yellow-400 text-black font-semibold px-4 py-2 rounded hover:bg-yellow-500 mb-2">
+      📘 Show Instructions
+    </button>
+    <div id="instructions-content" class="bg-yellow-100 rounded p-4 hidden">
+      <ul class="list-disc list-inside text-sm text-gray-700">
+        <li>Enter SKU details: Name, Quantity, Volume, Weight, and Destination.</li>
+        <li>Select a truck type or choose "Custom Truck" to input dimensions.</li>
+        <li>Click “Calculate Utilization” to view results and chart.</li>
+        <li>Use “Download Summary” to save results as CSV.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <form id="sku-form" class="bg-white p-6 rounded-lg shadow w-full max-w-3xl space-y-4">
+    <div id="sku-inputs" class="space-y-3">
+      <div class="flex flex-wrap gap-2 sku-row">
+        <input type="text" placeholder="SKU Name" required class="flex-1 border rounded px-3 py-2" />
+        <input type="number" placeholder="Quantity" required class="flex-1 border rounded px-3 py-2" />
+        <input type="number" placeholder="Volume (m³)" step="0.01" required class="flex-1 border rounded px-3 py-2" />
+        <input type="number" placeholder="Weight (kg)" step="0.01" required class="flex-1 border rounded px-3 py-2" />
+        <input type="text" placeholder="Destination" required class="flex-1 border rounded px-3 py-2" />
+      </div>
+    </div>
+
+    <button type="button" onclick="addRow()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add Another SKU</button>
+
+    <div>
+      <label for="truck" class="block font-medium">Select Truck Type:</label>
+      <select id="truck" required class="w-full mt-1 border rounded px-3 py-2">
+        <option value="small">Small Truck (15m³ / 3000kg)</option>
+        <option value="medium">Medium Truck (30m³ / 7000kg)</option>
+        <option value="large">Large Truck (45m³ / 12000kg)</option>
+        <option value="custom">Custom Truck</option>
+      </select>
+    </div>
+
+    <div id="custom-dimensions" class="hidden gap-2 mt-2 flex flex-wrap">
+      <input type="number" id="custom-volume" placeholder="Truck Volume (m³)" step="0.1" class="flex-1 border rounded px-3 py-2" />
+      <input type="number" id="custom-weight" placeholder="Truck Weight (kg)" step="0.1" class="flex-1 border rounded px-3 py-2" />
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+      <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Calculate Utilization</button>
+      <button type="button" onclick="location.reload()" class="bg-gray-300 text-black px-4 py-2 rounded hover:bg-gray-400">Reset Form</button>
+    </div>
+  </form>
+
+  <!-- Result Section -->
+  <div id="result" class="w-full max-w-3xl mt-6 text-sm"></div>
+  <canvas id="util-chart" width="400" height="200" class="mt-4 w-full max-w-3xl hidden"></canvas>
+  <button id="download-btn" class="hidden mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Download Summary</button>
+
+  <script>
+    function getEfficiencyLabel(value) {
+      if (value >= 90) return '<span class="text-green-600 font-bold">Excellent</span>';
+      if (value >= 75) return '<span class="text-yellow-600 font-bold">Good</span>';
+      if (value >= 50) return '<span class="text-orange-500 font-bold">Moderate</span>';
+      return '<span class="text-red-600 font-bold">Poor</span>';
+    }
+
+    let skus = [], results = [], chartInstance = null;
+
+    document.getElementById('truck').addEventListener('change', function () {
+      document.getElementById('custom-dimensions').classList.toggle('hidden', this.value !== 'custom');
+    });
+
+    document.getElementById('toggle-instructions').addEventListener('click', () => {
+      document.getElementById('instructions-content').classList.toggle('hidden');
+    });
+
+    function addRow() {
+      const div = document.createElement('div');
+      div.className = 'flex flex-wrap gap-2 sku-row';
+      div.innerHTML = `
+        <input type="text" placeholder="SKU Name" required class="flex-1 border rounded px-3 py-2" />
+        <input type="number" placeholder="Quantity" required class="flex-1 border rounded px-3 py-2" />
+        <input type="number" placeholder="Volume (m³)" step="0.01" required class="flex-1 border rounded px-3 py-2" />
+        <input type="number" placeholder="Weight (kg)" step="0.01" required class="flex-1 border rounded px-3 py-2" />
+        <input type="text" placeholder="Destination" required class="flex-1 border rounded px-3 py-2" />
+      `;
+      document.getElementById('sku-inputs').appendChild(div);
+    }
+
+    document.getElementById('sku-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const rows = document.querySelectorAll('.sku-row');
+      skus = Array.from(rows).map(row => {
+        const inputs = row.querySelectorAll('input');
+        return {
+          name: inputs[0].value,
+          qty: parseInt(inputs[1].value),
+          volume: parseFloat(inputs[2].value),
+          weight: parseFloat(inputs[3].value),
+          destination: inputs[4].value || 'Unknown'
+        };
+      });
+
+      const truckType = document.getElementById('truck').value;
+      const payload = {
+        skus,
+        truckType,
+        ...(truckType === 'custom' && {
+          customVolume: parseFloat(document.getElementById('custom-volume').value),
+          customWeight: parseFloat(document.getElementById('custom-weight').value),
+        })
+      };
+
+      const res = await fetch('/api/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      results = await res.json();
+
+      const chartLabels = [], chartVolume = [], chartWeight = [];
+
+      const resultHtml = results.map(group => {
+        chartLabels.push(group.destination);
+        chartVolume.push(parseFloat(group.volumeUtil));
+        chartWeight.push(parseFloat(group.weightUtil));
+
+        const volRating = getEfficiencyLabel(group.volumeUtil);
+        const wtRating = getEfficiencyLabel(group.weightUtil);
+
+        return `
+          <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded mb-6">
+            <h2 class="text-lg font-bold mb-2">Result - ${group.destination}</h2>
+            <p>Trucks Required: <strong>${group.trucksRequired}</strong></p>
+            <p>Volume Utilization: ${group.volumeUtil}% (${volRating})</p>
+            <p>Weight Utilization: ${group.weightUtil}% (${wtRating})</p>
+          </div>`;
+      }).join('');
+
+      document.getElementById('result').innerHTML = resultHtml;
+      document.getElementById('download-btn').classList.remove('hidden');
+
+      // ✅ Destroy old chart instance if present
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      document.getElementById('util-chart').classList.remove('hidden');
+      chartInstance = new Chart(document.getElementById('util-chart'), {
+        type: 'bar',
+        data: {
+          labels: chartLabels,
+          datasets: [
+            {
+              label: 'Volume Utilization (%)',
+              data: chartVolume,
+              backgroundColor: 'rgba(59, 130, 246, 0.6)'
+            },
+            {
+              label: 'Weight Utilization (%)',
+              data: chartWeight,
+              backgroundColor: 'rgba(16, 185, 129, 0.6)'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100
+            }
+          }
+        }
+      });
+    });
+
+    document.getElementById('download-btn').addEventListener('click', () => {
+      let csv = "Destination,Trucks Required,Volume Utilization (%),Weight Utilization (%)\n";
+      results.forEach(res => {
+        csv += `${res.destination},${res.trucksRequired},${res.volumeUtil},${res.weightUtil}\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "truck_utilization_summary.csv";
+      a.click();
+    });
+  </script>
+</body>
+</html>
